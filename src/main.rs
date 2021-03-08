@@ -49,7 +49,7 @@ fn main() {
                 thread::sleep(Duration::from_secs(3));
 
                 let mut buffer = String::new();
-                stream.read_to_string(&mut buffer).unwrap();
+                stream.read_to_string(&mut buffer);
                 println!("Server answered: {}", buffer);
                 thread::sleep(Duration::from_secs(3));
             }
