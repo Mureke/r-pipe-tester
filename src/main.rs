@@ -1,8 +1,10 @@
-use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
 use ::std::io::{self, prelude::*, BufReader};
 use std::time::{Duration};
 use std::thread;
 use std::fs;
+
+use interprocess::local_socket::{LocalSocketListener, LocalSocketStream};
+use shutdown_hooks::add_shutdown_hook;
 fn handle_error(conn: io::Result<LocalSocketStream>) -> Option<LocalSocketStream> {
     match conn {
         Ok(val) => Some(val),
@@ -12,22 +14,45 @@ fn handle_error(conn: io::Result<LocalSocketStream>) -> Option<LocalSocketStream
         }
     }
 }
+
+
+extern "C" fn shutdown_hook(){
+    fs::remove_file("/tmp/test");
+}
+
+
 fn main() {
+    add_shutdown_hook(shutdown_hook);
+
+    // Pipe server
     thread::spawn(|| {
         let listener = LocalSocketListener::bind("/tmp/test").unwrap();
         for mut conn in listener.incoming().filter_map(handle_error) {
-            conn.write_all(b"Hello from server");
-            let mut conn2 = BufReader::new(conn);
+            let mut contents = "Server response";
+            conn.write_all(contents.as_bytes());
+
             let mut buffer = String::new();
-            conn2.read_line(&mut buffer);
-            println!("Client answered: {}", buffer);
+            conn.read_to_string(&mut buffer);
+            println!("Client request: {}", buffer);
+
         }
     });
+    thread::sleep(Duration::from_secs(3));
+
+    let mut i: u32 = 0;
     loop {
+        // WRITE
+        let mut stream = LocalSocketStream::connect("/tmp/test").unwrap();
+        stream.set_nonblocking(true);
+        let mut contents = i.to_string();
+        stream.write_all(contents.as_bytes());
+        i = i+1;
+
         thread::sleep(Duration::from_secs(8));
-        let mut test = LocalSocketStream::connect("/tmp/test").unwrap();
-        let contents = "Test";
-        test.write(contents.as_bytes());
-        thread::sleep(Duration::from_secs(1));
+
+        // Read from pipe
+        let mut buffer = String::new();
+        stream.read_to_string(&mut buffer);
+        println!("Server answered: {}", buffer);
     }
 }
